@@ -1,0 +1,97 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: url-shortener-db
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: CE7668HT
+      POSTGRES_DB: shortener
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d shortener" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: url-shortener-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  lb:
+    image: nginx:alpine
+    container_name: url-shortener-lb
+    restart: unless-stopped
+    ports:
+      - "8080:80"          # зовнішній порт 8080 → Nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      web1:
+        condition: service_started
+      web2:
+        condition: service_started
+
+  web1:
+    build: .
+    container_name: url-shortener-web1
+    hostname: web1
+    restart: unless-stopped
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8000"
+    environment:
+      POSTGRES_SERVER: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: CE7668HT
+      POSTGRES_DB: shortener
+      REDIS_HOST: redis
+      INSTANCE_ID: web1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  web2:
+    build: .
+    container_name: url-shortener-web2
+    hostname: web2
+    restart: unless-stopped
+    volumes:
+      - .:/app
+    ports:
+      - "8002:8000"
+    environment:
+      POSTGRES_SERVER: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: CE7668HT
+      POSTGRES_DB: shortener
+      REDIS_HOST: redis
+      INSTANCE_ID: web2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+volumes:
+  postgres_data:
